@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="A spelling-bee trainer for a 150-word study list: words are spoken not shown, with Spanish translations, etymology, trivia and spelling traps.">
+<meta name="description" content="A spelling-bee trainer for two study lists, 320 words in all: words are spoken not shown, with Spanish translations, etymology, trivia and spelling traps.">
 <meta name="color-scheme" content="light dark">
 <meta property="og:title" content="The Pronouncer's Desk">
-<meta property="og:description" content="Spelling bee practice for ESL students. 150 words with audio, Spanish, etymology and an Anki deck.">
+<meta property="og:description" content="Spelling bee practice for ESL students. 320 words with audio, Spanish, etymology and an Anki deck.">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>&#128029;</text></svg>">
 <style>html{color-scheme:light dark}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
@@ -245,6 +245,22 @@ button{font:inherit;color:inherit;cursor:pointer}
 .teach .tag{display:inline-block;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
   font-weight:600;color:var(--gold);margin-right:7px}
 .teach .esn{border-left:2px solid var(--gold);padding-left:11px}
+.ic-row .pos{font-style:italic;color:var(--card-muted);margin-right:3px}
+
+/* ===== scope: which lists and which levels are in play ===== */
+.scope{display:flex;align-items:center;gap:9px 20px;flex-wrap:wrap;margin:-8px 0 24px;
+  padding:9px 14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius)}
+.scope-g{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.scope-k{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
+  font-weight:600;margin-right:2px}
+.tog{background:none;border:1px solid var(--line);border-radius:99px;padding:5px 11px;
+  font-size:12px;color:var(--muted);display:inline-flex;align-items:baseline;gap:6px}
+.tog:hover{border-color:var(--gold);color:var(--text-2)}
+.tog em{font-style:normal;font-size:10.5px;font-variant-numeric:tabular-nums;opacity:.7}
+.tog[aria-pressed="true"]{background:var(--gold-wash);border-color:var(--gold);color:var(--gold);font-weight:600}
+.tog.b[aria-pressed="true"]{background:var(--ok-wash);border-color:var(--ok);color:var(--ok)}
+.tog.a[aria-pressed="true"]{background:var(--miss-wash);border-color:var(--miss);color:var(--miss)}
+.scope-n{margin-left:auto;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
 
 /* ===== study ledger ===== */
 .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
@@ -266,6 +282,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .row-w{font-family:var(--f-display);font-size:17px;font-weight:500}
 .row-es{font-size:12.5px;color:var(--muted)}
 .row-r{display:flex;align-items:center;gap:9px}
+.chip.t{color:var(--muted);border-style:dashed}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--line)}
 .dot.learning{background:var(--gold-bright)}
 .dot.solid{background:var(--gold)}
@@ -417,6 +434,9 @@ textarea.export{width:100%;height:190px;background:var(--sunk);color:var(--text-
   .opt{padding:13px 11px;font-size:14px}
 
   /* search must be >=16px or iOS Safari zooms the whole page on focus */
+  .scope{gap:8px 14px;padding:9px 12px;margin:-4px 0 20px}
+  .scope-n{margin-left:0;flex:1 1 100%}
+  .tog{padding:6px 10px;font-size:11.5px}
   .filters input[type=search]{font-size:16px;max-width:none;flex:1 1 100%}
   .filters{gap:7px}
   .pill{padding:7px 12px}
@@ -442,7 +462,7 @@ textarea.export{width:100%;height:190px;background:var(--sunk);color:var(--text-
   .hero h1{font-size:24px}
   .indexcard{padding:20px 15px}
   .mic{margin:18px 0 4px}
-  .row-r .chip{display:none}   /* level lives in the study list header, not every row */
+  .row-r .chip{display:none}   /* level lives in the scope bar, not every row */
   .badges{grid-template-columns:repeat(5,1fr);gap:6px}
   .badge{font-size:15px;border-radius:7px}
   .tab em{display:none}
@@ -454,7 +474,7 @@ textarea.export{width:100%;height:190px;background:var(--sunk);color:var(--text-
 <body>
 <header class="board">
   <div class="board-in">
-    <div class="mark"><b>Spelling Bee</b> <span>150-word study list</span></div>
+    <div class="mark"><b>Spelling Bee</b> <span id="mast-sub">320-word study list</span></div>
     <div class="stat rankbox">
       <u>Rank</u><b id="s-rank">Classroom</b>
       <div class="xpbar"><i id="s-xp" style="width:0%"></i></div>
@@ -468,11 +488,29 @@ textarea.export{width:100%;height:190px;background:var(--sunk);color:var(--text-
 <div class="wrap">
   <nav class="tabs" role="tablist">
     <button class="tab" role="tab" id="tab-bee" aria-selected="true" data-view="bee">The Bee</button>
-    <button class="tab" role="tab" id="tab-study" aria-selected="false" data-view="study">Study List <em>150</em></button>
+    <button class="tab" role="tab" id="tab-study" aria-selected="false" data-view="study">Study List <em id="tab-study-n">320</em></button>
     <button class="tab" role="tab" id="tab-cards" aria-selected="false" data-view="cards">Flashcards</button>
     <button class="tab" role="tab" id="tab-origin" aria-selected="false" data-view="origin">Origins</button>
     <button class="tab" role="tab" id="tab-anki" aria-selected="false" data-view="anki">Anki Export</button>
   </nav>
+
+  <!-- ============ SCOPE: which lists and which levels are in play ============ -->
+  <div class="scope" id="scope">
+    <div class="scope-g">
+      <span class="scope-k">Lists</span>
+      <button class="tog" data-set="opening" aria-pressed="true"
+              title="La lista inicial de 150 palabras">Opening <em>150</em></button>
+      <button class="tog" data-set="tiebreak" aria-pressed="true"
+              title="La segunda lista, de desempate: 170 palabras">Tiebreaker <em>170</em></button>
+    </div>
+    <div class="scope-g">
+      <span class="scope-k">Levels</span>
+      <button class="tog b" data-lvl="Basic" aria-pressed="true">Basic <em>110</em></button>
+      <button class="tog i" data-lvl="Intermediate" aria-pressed="true">Intermediate <em>110</em></button>
+      <button class="tog a" data-lvl="Advanced" aria-pressed="true">Advanced <em>100</em></button>
+    </div>
+    <span class="scope-n" id="scope-n">320 words in play</span>
+  </div>
 
   <!-- ============ BEE ============ -->
   <section class="view" id="view-bee" role="tabpanel" aria-labelledby="tab-bee">
@@ -497,7 +535,7 @@ textarea.export{width:100%;height:190px;background:var(--sunk);color:var(--text-
                         stroke-width="7" stroke-linecap="round" stroke-dasharray="257.6"
                         stroke-dashoffset="257.6" style="transition:stroke-dashoffset .6s ease"></circle>
               </svg>
-              <figcaption><b id="ring-n">0</b><small>of 150</small></figcaption>
+              <figcaption><b id="ring-n">0</b><small id="ring-of">of 320</small></figcaption>
             </figure>
             <div class="ringnote">
               <b id="dash-line1">Nothing mastered yet.</b><br>
@@ -534,6 +572,7 @@ textarea.export{width:100%;height:190px;background:var(--sunk);color:var(--text-
         <div class="placard">
           <span class="pnum" id="r-num">001</span>
           <span class="chip" id="r-lvl">Basic</span>
+          <span class="chip t" id="r-set">Opening</span>
           <span class="hearts" id="r-hearts"></span>
         </div>
         <div class="indexcard">
@@ -575,9 +614,6 @@ textarea.export{width:100%;height:190px;background:var(--sunk);color:var(--text-
     <div class="filters">
       <input type="search" id="q" placeholder="Search word, meaning or Spanish…" aria-label="Search the study list">
       <button class="pill" data-f="all" aria-pressed="true">All</button>
-      <button class="pill" data-f="Basic" aria-pressed="false">Basic</button>
-      <button class="pill" data-f="Intermediate" aria-pressed="false">Intermediate</button>
-      <button class="pill" data-f="Advanced" aria-pressed="false">Advanced</button>
       <button class="pill" data-f="star" aria-pressed="false">★ Starred</button>
       <button class="pill" data-f="weak" aria-pressed="false">Missed</button>
       <span class="count" id="q-count"></span>
@@ -625,21 +661,23 @@ textarea.export{width:100%;height:190px;background:var(--sunk);color:var(--text-
     <div style="max-width:720px">
       <p class="eyebrow">Take it with you</p>
       <h2 style="font-family:var(--f-display);font-size:26px;font-weight:400;margin:8px 0 10px">
-        All 150 words as an Anki deck</h2>
+        <span id="anki-h">All 320 words</span> as an Anki deck</h2>
       <p style="color:var(--text-2);font-size:14px;max-width:60ch">
         Six fields per note: the word, its IPA, the Spanish, the definition, an example sentence,
-        and the etymology with its spelling trap. Copy the block below, or use the
-        <code>.txt</code> file saved next to this app.</p>
+        and the etymology with its spelling trap. The export follows the lists and levels you have
+        selected above. Copy the block below, or use the <code>.txt</code> files saved next to this
+        app.</p>
       <ol class="steps">
         <li><span>Copy the text below, paste it into a plain text file and save it as
             <code>spelling-bee.txt</code> with <b>UTF-8</b> encoding.</span></li>
         <li><span>In Anki: <b>File → Import</b>, choose that file.</span></li>
         <li><span>Set <b>Field separator</b> to <b>Tab</b> and tick <b>Allow HTML in fields</b>.</span></li>
         <li><span>Map the six fields in order, pick your deck, and import. Tags carry the level
-            (<code>basic</code>, <code>intermediate</code>, <code>advanced</code>) and the origin language.</span></li>
+            (<code>basic</code>, <code>intermediate</code>, <code>advanced</code>), the list
+            (<code>opening</code> or <code>tiebreak</code>) and the origin language.</span></li>
       </ol>
       <div style="display:flex;gap:9px;margin-bottom:12px;flex-wrap:wrap">
-        <button class="btn primary" id="anki-copy">Copy all 150 notes</button>
+        <button class="btn primary" id="anki-copy">Copy all notes</button>
         <button class="btn" id="anki-select">Select all</button>
       </div>
       <textarea class="export" id="anki-out" readonly spellcheck="false" aria-label="Anki import data"></textarea>
@@ -650,6 +688,7 @@ textarea.export{width:100%;height:190px;background:var(--sunk);color:var(--text-
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="words.js"></script>
+<script src="words2.js"></script>
 <script src="app.js"></script>
 
 </body>
