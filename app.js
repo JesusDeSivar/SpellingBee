@@ -1,4 +1,4 @@
-/* The Pronouncer's Desk — spelling bee trainer for the 150-word study list */
+/* The Pronouncer's Desk — spelling bee trainer for the opening 150 and the 170-word tiebreaker list */
 (function () {
   "use strict";
 
@@ -19,10 +19,71 @@
     { id: "sesqui",  ic: "📏", t: "A Foot and a Half", d: "Spell sesquipedalian correctly." },
     { id: "flaw",    ic: "🛡", t: "Flawless",          d: "Finish a championship with all three lives." },
     { id: "c100",    ic: "💯", t: "Century",           d: "Master 100 words." },
-    { id: "all",     ic: "🏆", t: "National Champion", d: "Master all 150 words." }
+    { id: "all",     ic: "🏆", t: "National Champion", d: "Master every word in both lists." }
   ];
   var BASE = { Basic: 10, Intermediate: 20, Advanced: 35 };
   var LVLCLASS = { Basic: "b", Intermediate: "i", Advanced: "a" };
+  var LEVELS = ["Basic", "Intermediate", "Advanced"];
+
+  /* ---------------- the two lists ----------------
+     words.js holds the opening 150; words2.js the 170-word tiebreaker list. Both are plain
+     top-level consts, so they are read by name, and a missing second file is not fatal. */
+  var SETS = [
+    { id: "opening",  label: "Opening",
+      list: typeof WORDS  !== "undefined" && WORDS  ? WORDS  : [] },
+    { id: "tiebreak", label: "Tiebreaker",
+      list: typeof WORDS2 !== "undefined" && WORDS2 ? WORDS2 : [] }
+  ];
+  var SETLABEL = {};
+  var ALL = [];
+  SETS.forEach(function (st) {
+    SETLABEL[st.id] = st.label;
+    st.list.forEach(function (w) {
+      var c = {}, k;
+      for (k in w) { if (Object.prototype.hasOwnProperty.call(w, k)) c[k] = w[k]; }
+      c.set = st.id;
+      ALL.push(c);
+    });
+  });
+
+  /* ---------------- scope: which lists and which levels are in play ----------------
+     Progress is stored per word, so a word that sits in both lists shares one record: spell
+     'journey' in the tiebreaker and it counts as spelled in the opening list too. */
+  var SKEY = "pronouncersdesk.scope.v1";
+  var SC = {
+    sets: { opening: 1, tiebreak: 1 },
+    lvls: { Basic: 1, Intermediate: 1, Advanced: 1 }
+  };
+  try {
+    var rawSC = localStorage.getItem(SKEY);
+    if (rawSC) {
+      var lsc = JSON.parse(rawSC), kk;
+      if (lsc && lsc.sets) { for (kk in SC.sets) { SC.sets[kk] = lsc.sets[kk] ? 1 : 0; } }
+      if (lsc && lsc.lvls) { for (kk in SC.lvls) { SC.lvls[kk] = lsc.lvls[kk] ? 1 : 0; } }
+    }
+  } catch (e) { /* blocked storage — start with everything in play */ }
+  function anyOn(o) { var k; for (k in o) { if (o[k]) return true; } return false; }
+  if (!anyOn(SC.sets)) { SC.sets.opening = 1; SC.sets.tiebreak = 1; }
+  if (!anyOn(SC.lvls)) { SC.lvls.Basic = 1; SC.lvls.Intermediate = 1; SC.lvls.Advanced = 1; }
+
+  var poolCache = null;
+  function pool() {
+    if (!poolCache) {
+      poolCache = ALL.filter(function (w) { return SC.sets[w.set] && SC.lvls[w.lvl]; });
+    }
+    return poolCache;
+  }
+  /* one entry per word — for rounds and flashcards, where a duplicate would just repeat itself */
+  function uniquePool() {
+    var seen = {};
+    return pool().filter(function (w) {
+      if (seen[w.w]) return false;
+      seen[w.w] = 1; return true;
+    });
+  }
+  function saveScope() {
+    try { localStorage.setItem(SKEY, JSON.stringify(SC)); } catch (e) { /* non-fatal */ }
+  }
 
   /* ---------------- state ---------------- */
   var KEY = "pronouncersdesk.v1";
@@ -51,7 +112,7 @@
     return "learning";
   }
   var masteredCount = function () {
-    return WORDS.filter(function (w) { return state(w.w) === "mastered"; }).length;
+    return pool().filter(function (w) { return state(w.w) === "mastered"; }).length;
   };
 
   var streak = 0;
@@ -386,16 +447,16 @@
   function checkBadges() {
     if (S.clean >= 20) award("clean20");
     var seen = {}, allGreek = true, done = 0;
-    WORDS.forEach(function (w) {
+    ALL.forEach(function (w) {
       var p = S.p[w.w];
       if (p && p.r > 0) { seen[w.org] = 1; }
       if (w.org === "Greek" && !(p && p.r > 0)) allGreek = false;
       if (state(w.w) === "mastered") done++;
     });
-    if (Object.keys(seen).length >= 9) award("poly");
+    if (Object.keys(seen).length >= ORIGINS.length) award("poly");
     if (allGreek) award("greek");
     if (done >= 100) award("c100");
-    if (done >= 150) award("all");
+    if (done >= ALL.length) award("all");
   }
 
   /* ---------------- dashboard ---------------- */
@@ -413,12 +474,14 @@
     var capyMood = n >= 100 ? "zen" : n >= 25 ? "proud" : "calm";
     $("#hero-duo").innerHTML = duoSVG(n ? "happy" : "calm", capyMood) +
       "<figcaption><b>Bea &amp; Capi</b><span>la abeja y el carpincho</span></figcaption>";
+    var total = pool().length || 1;
     var C = 2 * Math.PI * 41;
-    $("#ring-p").setAttribute("stroke-dashoffset", String(C - (n / 150) * C));
+    $("#ring-p").setAttribute("stroke-dashoffset", String(C - (n / total) * C));
     $("#ring-n").textContent = n;
+    $("#ring-of").textContent = "of " + pool().length;
 
-    var started = WORDS.filter(function (w) { return state(w.w); }).length;
-    var weak = WORDS.filter(function (w) { return S.p[w.w] && S.p[w.w].x > 0 && state(w.w) !== "mastered"; }).length;
+    var started = pool().filter(function (w) { return state(w.w); }).length;
+    var weak = pool().filter(function (w) { return S.p[w.w] && S.p[w.w].x > 0 && state(w.w) !== "mastered"; }).length;
     if (!started) {
       $("#dash-line1").textContent = "Nothing mastered yet.";
       $("#dash-line2").textContent = "A word counts as mastered after three clean spellings.";
@@ -430,20 +493,15 @@
     }
     $("#go-weak").disabled = !weak;
 
-    var L = ["Basic", "Intermediate", "Advanced"];
-    var sub = {
-      Basic: "Everyday patterns",
-      Intermediate: "Silent letters and doubles",
-      Advanced: "Greek, Latin and showmanship"
-    };
-    $("#levels").innerHTML = L.map(function (lv, i) {
-      var set = WORDS.filter(function (w) { return w.lvl === lv; });
+    $("#levels").innerHTML = LEVELS.map(function (lv, i) {
+      if (!SC.lvls[lv]) return "";                       // level switched off in the scope bar
+      var set = pool().filter(function (w) { return w.lvl === lv; });
       var m = set.filter(function (w) { return state(w.w) === "mastered"; }).length;
       return '<button class="lvl" data-lvl="' + lv + '">' +
         '<span class="lvl-n">' + (i + 1) + '</span>' +
         '<span><span class="lvl-t">' + lv + '</span>' +
         '<span class="lvl-s"> · ' + set.length + ' words</span>' +
-        '<span class="lvl-meter"><i style="width:' + ((m / set.length) * 100) + '%"></i></span></span>' +
+        '<span class="lvl-meter"><i style="width:' + (set.length ? (m / set.length) * 100 : 0) + '%"></i></span></span>' +
         '<span class="lvl-c">' + m + "/" + set.length + "</span></button>";
     }).join("");
     $$(".lvl").forEach(function (b) {
@@ -470,24 +528,34 @@
   var R = null;
 
   function pickQueue(mode, lvl) {
-    var pool = WORDS.slice();
-    if (lvl) pool = pool.filter(function (w) { return w.lvl === lvl; });
+    var set = uniquePool();
+    if (lvl) set = set.filter(function (w) { return w.lvl === lvl; });
     if (mode === "weak") {
-      pool = pool.filter(function (w) { return S.p[w.w] && S.p[w.w].x > 0 && state(w.w) !== "mastered"; });
-      return shuffle(pool).slice(0, 12);
+      set = set.filter(function (w) { return S.p[w.w] && S.p[w.w].x > 0 && state(w.w) !== "mastered"; });
+      return shuffle(set).slice(0, 12);
     }
     if (mode === "champ") {
-      var by = function (l) { return shuffle(WORDS.filter(function (w) { return w.lvl === l; })); };
-      return by("Basic").slice(0, 4).concat(by("Intermediate").slice(0, 4), by("Advanced").slice(0, 4));
+      // twelve words that climb through whichever levels are in play
+      var live = LEVELS.filter(function (l) { return SC.lvls[l]; });
+      var per = Math.ceil(12 / live.length), q = [];
+      live.forEach(function (l) {
+        q = q.concat(shuffle(set.filter(function (w) { return w.lvl === l; })).slice(0, per));
+      });
+      return q.slice(0, 12);
     }
-    var fresh = shuffle(pool.filter(function (w) { return state(w.w) !== "mastered"; }));
-    var rest = shuffle(pool.filter(function (w) { return state(w.w) === "mastered"; }));
+    var fresh = shuffle(set.filter(function (w) { return state(w.w) !== "mastered"; }));
+    var rest = shuffle(set.filter(function (w) { return state(w.w) === "mastered"; }));
     return fresh.concat(rest).slice(0, 10);
   }
 
   function startRound(mode, lvl) {
     var q = pickQueue(mode, lvl);
-    if (!q.length) { toast("No words left in that set — try another."); return; }
+    if (!q.length) {
+      toast(mode === "weak"
+        ? "No misses to drill in the lists you have selected."
+        : "No words in that selection — turn a list or a level back on above.");
+      return;
+    }
     R = { q: q, i: 0, mode: mode, lives: 3, hints: {}, answered: false, pts: 0, right: 0 };
     $("#bee-idle").hidden = true;
     $("#bee-live").hidden = false;
@@ -504,6 +572,8 @@
     R.answered = false; R.hints = {};
     $("#r-num").textContent = String(w.n).padStart(3, "0");
     var chip = $("#r-lvl"); chip.textContent = w.lvl; chip.className = "chip " + LVLCLASS[w.lvl];
+    $("#r-set").textContent = SETLABEL[w.set] || "";
+    $("#r-set").title = w.tier ? w.tier : "";
     $("#r-mode").textContent =
       (R.mode === "champ" ? "Championship" : R.mode === "weak" ? "Drilling misses" : "Practice") +
       " · word " + (R.i + 1) + " of " + R.q.length;
@@ -707,17 +777,18 @@
   }
 
   /* ---------------- study ledger ---------------- */
-  var filter = "all", query = "", openWord = null;
+  var filter = "all", query = "", openN = null;
 
   function cardHTML(w) {
     var rows = [
       ["Español", esc(w.es), "es"],
-      ["Definition", esc(w.def), ""],
+      ["Definition", (w.pos ? '<i class="pos">' + esc(w.pos) + "</i> " : "") + esc(w.def), ""],
       ["In a sentence", "<em>" + esc(w.ex) + "</em>", ""],
       ["Origin", esc(w.org), ""],
       ["Etymology", esc(w.ety), ""],
       ["Trivia", esc(w.triv), ""],
-      ["The trap", "<b>" + esc(w.trap) + "</b>", ""]
+      ["The trap", "<b>" + esc(w.trap) + "</b>", ""],
+      ["List", esc(SETLABEL[w.set]) + (w.tier ? " · " + esc(w.tier) : ""), ""]
     ];
     if (w.esn) rows.push(["Para ti", esc(w.esn), ""]);
     return '<div class="indexcard">' +
@@ -740,10 +811,9 @@
 
   function visible() {
     var q = query.toLowerCase();
-    return WORDS.filter(function (w) {
+    return pool().filter(function (w) {
       if (filter === "star" && !(S.p[w.w] && S.p[w.w].star)) return false;
       if (filter === "weak" && !(S.p[w.w] && S.p[w.w].x > 0)) return false;
-      if (filter !== "all" && filter !== "star" && filter !== "weak" && w.lvl !== filter) return false;
       if (!q) return true;
       return (w.w + " " + w.es + " " + w.def + " " + w.org).toLowerCase().indexOf(q) > -1;
     });
@@ -752,19 +822,22 @@
   function paintLedger() {
     stopListening(); sayBusy = false;
     var list = visible();
-    $("#q-count").textContent = list.length + " of 150";
+    $("#q-count").textContent = list.length + " of " + pool().length;
     $("#ledger").innerHTML = list.map(function (w) {
       var st = state(w.w);
       var starred = S.p[w.w] && S.p[w.w].star;
-      return '<button class="row" data-w="' + esc(w.w) + '">' +
+      return '<button class="row" data-n="' + w.n + '">' +
         '<span class="row-n">' + String(w.n).padStart(3, "0") + "</span>" +
         '<span><span class="row-w">' + esc(w.w) + "</span> " +
         '<span class="row-es">' + esc(w.es) + "</span></span>" +
         '<span class="row-r"><span class="chip ' + LVLCLASS[w.lvl] + '">' + w.lvl.slice(0, 3) + "</span>" +
+        (w.set === "tiebreak"
+          ? '<span class="chip t" title="' + esc(SETLABEL[w.set] + (w.tier ? " · " + w.tier : "")) + '">Tie</span>'
+          : "") +
         '<span class="dot ' + st + '" title="' + (st || "not started") + '"></span>' +
         '<span class="star' + (starred ? " on" : "") + '" data-star="' + esc(w.w) + '" role="img" ' +
         'aria-label="star">★</span></span></button>' +
-        (openWord === w.w ? '<div class="detail">' + cardHTML(w) + "</div>" : "");
+        (openN === w.n ? '<div class="detail">' + cardHTML(w) + "</div>" : "");
     }).join("") || '<div style="padding:26px;text-align:center;color:var(--muted)">No words match.</div>';
   }
 
@@ -819,7 +892,7 @@
     }
     var snd = e.target.closest("[data-s]");
     if (snd) {
-      var w0 = WORDS.filter(function (x) { return x.w === openWord; })[0];
+      var w0 = ALL.filter(function (x) { return x.n === openN; })[0];
       if (!w0) return;
       if (snd.dataset.s === "hear") say(w0.w, 0.85);
       if (snd.dataset.s === "slow") say(w0.w, 0.45);
@@ -828,8 +901,12 @@
       if (snd.dataset.s === "mine") sayItCheck(w0, snd);
       return;
     }
-    var row = e.target.closest("[data-w]");
-    if (row) { openWord = openWord === row.dataset.w ? null : row.dataset.w; paintLedger(); }
+    var row = e.target.closest("[data-n]");
+    if (row) {
+      var rn = parseInt(row.dataset.n, 10);
+      openN = openN === rn ? null : rn;
+      paintLedger();
+    }
   });
   $("#q").addEventListener("input", function (e) { query = e.target.value; paintLedger(); });
   $$('.filters [data-f]').forEach(function (b) {
@@ -846,18 +923,26 @@
   var dir = "en-es", fcWord = null, fcFlipped = false, capiFor = null;
 
   function fcPick() {
-    var pool = WORDS.filter(function (w) { return (S.p[w.w] ? S.p[w.w].box : 1) < 5; });
-    if (!pool.length) pool = WORDS.slice();
-    var weights = pool.map(function (w) { return 6 - (S.p[w.w] ? S.p[w.w].box : 1); });
+    var deck = uniquePool().filter(function (w) { return (S.p[w.w] ? S.p[w.w].box : 1) < 5; });
+    if (!deck.length) deck = uniquePool();
+    if (!deck.length) return null;
+    var weights = deck.map(function (w) { return 6 - (S.p[w.w] ? S.p[w.w].box : 1); });
     var total = weights.reduce(function (a, b) { return a + b; }, 0);
     var r = Math.random() * total;
-    for (var i = 0; i < pool.length; i++) { r -= weights[i]; if (r <= 0) return pool[i]; }
-    return pool[pool.length - 1];
+    for (var i = 0; i < deck.length; i++) { r -= weights[i]; if (r <= 0) return deck[i]; }
+    return deck[deck.length - 1];
   }
 
   function paintCard() {
     if (!fcWord) fcWord = fcPick();
     var w = fcWord, f = $("#fc-face");
+    if (!w) {
+      f.innerHTML = '<span class="fc-hint">Nothing to study</span>' +
+        '<span class="big">—</span>' +
+        '<span class="fc-hint">Turn a list or a level back on above.</span>';
+      $("#fc-ctl").innerHTML = ""; $("#fc-boxes").innerHTML = "";
+      return;
+    }
     if (!fcFlipped) {
       var front = dir === "es-en" ? esc(w.es) : dir === "def-en" ? esc(w.def) : esc(w.w);
       f.innerHTML = '<span class="fc-hint">' +
@@ -878,7 +963,7 @@
         '<button class="btn ghost" data-g="s">🔊</button>'
       : '<button class="btn ghost" data-g="s">🔊 Hear it</button>' +
         '<button class="btn" data-g="f">Flip</button>';
-    var retired = WORDS.filter(function (x) { return S.p[x.w] && S.p[x.w].box >= 5; }).length;
+    var retired = uniquePool().filter(function (x) { return S.p[x.w] && S.p[x.w].box >= 5; }).length;
     $("#capy-av").innerHTML = capySVG(retired >= 50 ? "zen" : "calm");
     if (capiFor !== w.w) {            // a new line per card, not per flip
       capiFor = w.w;
@@ -886,7 +971,7 @@
     }
 
     var counts = [0, 0, 0, 0, 0];
-    WORDS.forEach(function (x) { counts[(S.p[x.w] ? S.p[x.w].box : 1) - 1]++; });
+    uniquePool().forEach(function (x) { counts[(S.p[x.w] ? S.p[x.w].box : 1) - 1]++; });
     var at = (S.p[w.w] ? S.p[w.w].box : 1) - 1;
     $("#fc-boxes").innerHTML = counts.map(function (c, i) {
       return '<div class="box' + (i === at ? " at" : "") + '"><b>' + c + "</b>Box " + (i + 1) + "</div>";
@@ -913,11 +998,24 @@
   });
 
   /* ---------------- origins quiz ---------------- */
-  var ORIGINS = WORDS.reduce(function (a, w) { if (a.indexOf(w.org) < 0) a.push(w.org); return a; }, []).sort();
+  /* the answer options come from every list, so they stay the same nine languages
+     however the scope bar is set */
+  var ORIGINS = ALL.reduce(function (a, w) { if (a.indexOf(w.org) < 0) a.push(w.org); return a; }, []).sort();
   var oWord = null;
 
   function paintOrigin() {
-    oWord = WORDS[Math.floor(Math.random() * WORDS.length)];
+    var quizzable = uniquePool();
+    if (!quizzable.length) {
+      oWord = null;
+      $("#o-word").textContent = "—";
+      $("#o-ipa").textContent = " ";
+      $("#o-opts").innerHTML = "";
+      $("#o-after").innerHTML = '<p style="color:var(--muted);font-size:13px">' +
+        "Turn a list or a level back on above to play.</p>";
+      $("#o-map").innerHTML = "";
+      return;
+    }
+    oWord = quizzable[Math.floor(Math.random() * quizzable.length)];
     $("#o-word").textContent = oWord.w;
     $("#o-ipa").textContent = oWord.ipa;
     $("#o-after").innerHTML = "";
@@ -927,8 +1025,8 @@
       return '<button class="opt" data-o="' + esc(o) + '">' + esc(o) + "</button>";
     }).join("");
     var counts = {};
-    WORDS.forEach(function (w) { counts[w.org] = (counts[w.org] || 0) + 1; });
-    $("#o-map").innerHTML = ORIGINS.map(function (o) {
+    uniquePool().forEach(function (w) { counts[w.org] = (counts[w.org] || 0) + 1; });
+    $("#o-map").innerHTML = ORIGINS.filter(function (o) { return counts[o]; }).map(function (o) {
       return '<span class="maptag">' + esc(o) + " <b>" + counts[o] + "</b></span>";
     }).join("");
   }
@@ -956,12 +1054,13 @@
   /* ---------------- anki ---------------- */
   function ankiText() {
     var clean = function (s) { return String(s).replace(/[\t\r\n]+/g, " ").trim(); };
-    var lines = WORDS.map(function (w) {
+    var lines = pool().map(function (w) {
       var notes = "<b>" + clean(w.trap) + "</b><br><br>" +
         clean(w.ety) + "<br><br><i>" + clean(w.triv) + "</i>" +
         (w.esn ? "<br><br>" + clean(w.esn) : "");
-      var tags = w.lvl.toLowerCase() + " " + w.org.toLowerCase().replace(/\s+/g, "-") + " spelling-bee";
-      return [clean(w.w), clean(w.ipa), clean(w.es), clean(w.def),
+      var tags = w.lvl.toLowerCase() + " " + w.org.toLowerCase().replace(/\s+/g, "-") +
+        " " + w.set + " spelling-bee";
+      return [clean(w.w), clean(w.ipa), clean(w.es), clean((w.pos ? w.pos + " " : "") + w.def),
               clean(w.ex).replace(new RegExp("\\b" + w.w + "\\b", "i"), "<b>" + w.w + "</b>"),
               notes, tags].join("\t");
     });
@@ -969,17 +1068,18 @@
   }
   $("#anki-copy").addEventListener("click", function () {
     var t = $("#anki-out");
+    var n = pool().length + " note" + (pool().length === 1 ? "" : "s");
     t.select(); t.setSelectionRange(0, t.value.length);
     var done = false;
     try { done = document.execCommand("copy"); } catch (e) { done = false; }
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(t.value).then(function () {
-        toast("All 150 notes copied. Paste into a .txt file and import.");
+        toast(n + " copied. Paste into a .txt file and import.");
       }, function () {
-        toast(done ? "All 150 notes copied." : "Press Ctrl+C to copy the selected text.");
+        toast(done ? n + " copied." : "Press Ctrl+C to copy the selected text.");
       });
     } else {
-      toast(done ? "All 150 notes copied." : "Press Ctrl+C to copy the selected text.");
+      toast(done ? n + " copied." : "Press Ctrl+C to copy the selected text.");
     }
   });
   $("#anki-select").addEventListener("click", function () {
@@ -1078,7 +1178,71 @@
     try { localStorage.setItem("pd.theme", next); } catch (e2) { /* ignore */ }
   });
 
+  /* ---------------- the scope bar ----------------
+     Two filters over one shelf of words: which list, and which level. Everything else in the
+     app - the round, the ledger, the flashcards, the origins quiz, the Anki export - reads
+     the same pool(), so the whole desk follows what is switched on here. */
+  function paintScope() {
+    var words = pool();
+    $$("#scope [data-set]").forEach(function (b) {
+      var on = !!SC.sets[b.dataset.set];
+      b.setAttribute("aria-pressed", String(on));
+      // how many words this list contributes at the levels currently in play
+      var n = ALL.filter(function (w) { return w.set === b.dataset.set && SC.lvls[w.lvl]; }).length;
+      b.querySelector("em").textContent = n;
+    });
+    $$("#scope [data-lvl]").forEach(function (b) {
+      var on = !!SC.lvls[b.dataset.lvl];
+      b.setAttribute("aria-pressed", String(on));
+      var n = ALL.filter(function (w) { return w.lvl === b.dataset.lvl && SC.sets[w.set]; }).length;
+      b.querySelector("em").textContent = n;
+    });
+    var uniq = uniquePool().length;
+    $("#scope-n").textContent = words.length + " word" + (words.length === 1 ? "" : "s") + " in play" +
+      (uniq !== words.length ? " · " + uniq + " distinct" : "");
+    $("#mast-sub").textContent = words.length + "-word study list";
+    $("#tab-study-n").textContent = words.length;
+    $("#anki-h").textContent = words.length === ALL.length
+      ? "All " + ALL.length + " words"
+      : "The " + words.length + " words you have selected";
+  }
+
+  function scopeChanged() {
+    poolCache = null;
+    saveScope();
+    openN = null;
+    fcWord = null; fcFlipped = false;
+    paintScope();
+    paintBoard(); paintDash(); paintLedger(); paintCard();
+    if (oWord !== null || $("#view-origin").hidden === false) paintOrigin();
+    $("#anki-out").value = ankiText();
+  }
+
+  $("#scope").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-set],[data-lvl]");
+    if (!b) return;
+    if (b.dataset.set) {
+      if (SC.sets[b.dataset.set] && !anyOtherOn(SC.sets, b.dataset.set)) {
+        toast("Keep at least one list in play."); return;
+      }
+      SC.sets[b.dataset.set] = SC.sets[b.dataset.set] ? 0 : 1;
+    } else {
+      if (SC.lvls[b.dataset.lvl] && !anyOtherOn(SC.lvls, b.dataset.lvl)) {
+        toast("Keep at least one level in play."); return;
+      }
+      SC.lvls[b.dataset.lvl] = SC.lvls[b.dataset.lvl] ? 0 : 1;
+    }
+    scopeChanged();
+  });
+  /* is anything other than `except` still switched on? */
+  function anyOtherOn(o, except) {
+    var k;
+    for (k in o) { if (k !== except && o[k]) return true; }
+    return false;
+  }
+
   /* ---------------- boot ---------------- */
   $("#anki-out").value = ankiText();
+  paintScope();
   paintBoard(); paintDash(); paintLedger(); paintCard();
 })();
